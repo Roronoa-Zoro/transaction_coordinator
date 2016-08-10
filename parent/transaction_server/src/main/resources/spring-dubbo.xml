@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:dubbo="http://code.alibabatech.com/schema/dubbo"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.2.xsd
+       http://code.alibabatech.com/schema/dubbo http://code.alibabatech.com/schema/dubbo/dubbo.xsd">
+
+    <dubbo:application name="transaction-coordinator-app"/>
+
+    <dubbo:registry address="zookeeper://127.0.0.1:2181"/>
+
+    <dubbo:protocol name="dubbo" port="20881"/>
+    <!--通过将server设置为servlet，dubbo将采用外部应用服务器的servlet容器来做rest server。同时，还要在dubbo系统的web.xml中添加配置：BootstrapListener和DispatcherServlet-->
+    <!--port必须保证与外部应用服务器的端口一致-->
+    <!--contextpath必须保证为webapp path加上servlet的url-pattern-->
+    <!--
+    <dubbo:protocol name="rest" port="8088" contextpath="/marketing-platform-rpc/rest_api" server="servlet"/>
+    -->
+    <dubbo:service interface="com.lp.transaction.client.api.TransactionClient" ref="trxClient" protocol="dubbo"/>
+
+    <bean id="trxClient" class="com.lp.transaction.server.rpc.DefaultTransactionClient"/>
+
+</beans>

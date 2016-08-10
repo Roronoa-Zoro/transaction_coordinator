@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lp.transaction.server.dao.TransactionParticipantsMapper">
+
+    <!-- 通用查询结果列-->
+    <sql id="Base_Column_List">
+        participants_id as participantsId,trx_id as trxId,participants_state as participantsState,
+        participants_callback as participantsCallback,participants_submit_callback as participantsSubmitCallback,
+        participants_rollback_callback as participantsRollbackCallback,participants_create_time as participantsCreateTime,
+        participants_update_time as participantsUpdateTime,participants_version as participantsVersion,
+        participants_args as participantsArgs,participants_invoke_state as participantsInvokeState
+    </sql>
+
+
+
+</mapper>

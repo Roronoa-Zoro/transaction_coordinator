@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lp.transaction.server.dao.TransactionRecordMapper">
+
+    <!-- 通用查询结果列-->
+    <sql id="Base_Column_List">
+        trx_id as trxId,trx_state as trxState,trx_parti_num as strxPartiNum,trx_callback as trxCallback,
+        trx_submit_callback as trxSubmitCallback,trx_rollback_callback as trxRollbackCallback,
+        trx_create_time as trxCreateTime,trx_update_time as trxUpdateTime,trx_version as trxVersion,
+        trx_send_status as trxSendStatus
+    </sql>
+
+    <select id="queryRecordByState" resultType="TransactionRecordEntity" >
+        SELECT
+        <include refid="Base_Column_List" />
+        FROM transaction_record
+        where trx_state=#{state}
+    </select>
+
+</mapper>
