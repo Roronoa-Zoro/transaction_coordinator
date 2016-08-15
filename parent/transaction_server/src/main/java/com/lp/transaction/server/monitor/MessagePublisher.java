@@ -3,15 +3,11 @@ package com.lp.transaction.server.monitor;
 import com.lp.transaction.server.enums.RunningState;
 import com.lp.transaction.server.enums.TrxMsgSendResState;
 import com.lp.transaction.server.service.TransactionRecordService;
-import com.lp.transaction.server.zkClient.listener.CommonZkDataListener;
-import com.lp.transaction.server.zkClient.listener.CommonZkStateListener;
-import com.lp.transaction.server.zkClient.listener.ListenerLifecycle;
 import com.lp.transaction.server.zkClient.listener.ListenerManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-
 import javax.annotation.PostConstruct;
 import java.util.concurrent.*;
 
@@ -20,7 +16,7 @@ import java.util.concurrent.*;
  */
 @Slf4j
 @Component
-class MessagePublisher implements ListenerLifecycle {
+class MessagePublisher {
 
     @Value("${trxMessagePublish.enabled}")
     private boolean publishedEnabled;// 是否需要运行
@@ -30,11 +26,8 @@ class MessagePublisher implements ListenerLifecycle {
     @Autowired
     private TransactionRecordService trxRecordService;
 
-    private CommonZkDataListener commonZkDataListener;
-    private CommonZkStateListener commonZkStateListener;
     private final String LISTENER_NAME = "PublishTrxMessage";
     private volatile RunningState runningState = RunningState.Stop;
-    private Thread thread;
     private ThreadPoolExecutor poolExecutor = new ThreadPoolExecutor(1, 2, 60L, TimeUnit.SECONDS, new LinkedBlockingDeque<>());
     private Future<?> future;
 
@@ -44,13 +37,9 @@ class MessagePublisher implements ListenerLifecycle {
             log.info("[事务消息发放]配置不启动，启动结束");
             return;
         }
-        commonZkDataListener = new CommonZkDataListener(this);
-        commonZkStateListener = new CommonZkStateListener(this);
-        listenerManager.tryListen(LISTENER_NAME, commonZkDataListener, commonZkStateListener);
         startListener();
     }
 
-    @Override
     public void startListener() {
         log.info("[事务消息发放]启动开始");
         boolean isListen = listenerManager.createFinanceNode(LISTENER_NAME);
@@ -64,7 +53,6 @@ class MessagePublisher implements ListenerLifecycle {
         log.info("[事务消息发放]启动完成");
     }
 
-    @Override
     public void stopListener() {
         log.info("[事务消息发放]停止运行");
         runningState = RunningState.Stop;
