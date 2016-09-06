@@ -5,6 +5,7 @@ import com.lp.transaction.client.enums.TransactionState;
 import com.lp.transaction.server.entity.TransactionParticipantsEntity;
 import com.lp.transaction.server.entity.TransactionRecordEntity;
 import com.lp.transaction.server.enums.TrxMsgProcessState;
+import com.lp.transaction.server.monitor.TrxParticipantMonitorPool;
 import com.lp.transaction.server.service.RestService;
 import com.lp.transaction.server.service.TransactionParticipantsService;
 import com.lp.transaction.server.service.TransactionRecordService;
@@ -16,7 +17,13 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 
 /**
  * Created by 123 on 2016/8/2.
@@ -31,6 +38,9 @@ public class TransactionStateServiceImpl implements TransactionStateService {
     private TransactionRecordService trxRecordService;
     @Autowired
     private TransactionParticipantsService trxParticipantService;
+    @Autowired
+    private TrxParticipantMonitorPool pool;
+
 
     @Override
     public boolean handleUnknownState(TransactionRecordEntity trx) {
@@ -45,22 +55,33 @@ public class TransactionStateServiceImpl implements TransactionStateService {
         TransactionParticipantsEntity participants = new TransactionParticipantsEntity();
         participants.setTrxId(trx.getTrxId());
         List<TransactionParticipantsEntity> participantsList = trxParticipantService.selectList(participants);
-        if (dbTrx.getTrxPartiNum() == participantsList.size()) {
-            trxRecordService.commitMainTrx(trx);
-            log.info("check unknown record:{}, result is commit", trx.getTrxId());
+        if (dbTrx.getTrxPartiNum() != participantsList.size()) {
+            trxRecordService.rollbackMainTrx(trx);
+            log.info("check unknown record:{}, result is rollback due to actual participants num:{} is not equals to expected num:{}",
+                    trx.getTrxId(), participantsList.size(), dbTrx.getTrxPartiNum());
             return true;
         }
 
-        trxRecordService.rollbackMainTrx(trx);
-        log.info("check unknown record:{}, result is rollback due to actual participants num:{} is not equals to expected num:{}",
-                        trx.getTrxId(), participantsList.size(), dbTrx.getTrxPartiNum());
+        Set<Integer> stateSet = new HashSet<>();
+        stateSet.add(res.getState());
+        participantsList.forEach(par -> {
+            CallbackState parRes = restService.monitorTrxStatus(par.getParticipantsCallback(), par.getParticipantsId());
+            stateSet.add(parRes.getState());
+        });
+        if (stateSet.size() > 1) {
+            //有事务参与者的提交状态和其他参与者不一致，回滚
+            trxRecordService.rollbackMainTrx(trx);
+            return true;
+        }
 
+        trxRecordService.commitMainTrx(trx);
+        log.info("check unknown record:{}, result is commit", trx.getTrxId());
         return true;
 
     }
 
     @Override
-    public boolean handleCommitState(TransactionRecordEntity trx) {
+    public boolean handleCommitState(TransactionRecordEntity trx) throws ExecutionException, InterruptedException {
         TransactionParticipantsEntity participants = new TransactionParticipantsEntity();
         participants.setTrxId(trx.getTrxId());
         List<TransactionParticipantsEntity> participantsList = trxParticipantService.selectList(participants);
@@ -74,35 +95,53 @@ public class TransactionStateServiceImpl implements TransactionStateService {
         //事务参与者的数量和预期的一样,表示没有参与者实际执行失败,但由于网络原因造成主事务接收到成功
         List<TransactionParticipantsEntity> processedList = new ArrayList<>();
         LocalDateTime updateTime = LocalDateTime.now();
+
+        /**
+         * 应该先检查所有参与者是否都处于可提交状态
+         */
+        List<Future<CallbackState>> futures = new ArrayList<>(participantsList.size());
+        participantsList.forEach(participant -> {
+                futures.add(pool.submitMonitorTask(participant.getParticipantsCallback(), participant.getParticipantsId()));
+        });
         boolean invalidCommit = false;
-        for (TransactionParticipantsEntity par : participantsList) {
-            if (TransactionState.COMMIT.getState() == par.getParticipantsState()) {
-                continue;
-            }
-            CallbackInvokeResVO res = restService.invoke(par.getParticipantsSubmitCallback(), par.getParticipantsId());
-            /*表示事务参与者记录创建成功,但是后续参与者的逻辑执行错误，导致了回滚
-              但是却由于某些网络原因返回主事务 成功消息
-             */
-            if (res.getInvokeState() == CallbackState.CallbackIllegal) {
+        for (Future<CallbackState> future : futures) {
+            if (CallbackState.CallbackPreCommit != future.get()) {
+                //有参与者事务未处于可提交状态
                 invalidCommit = true;
                 break;
             }
-            par.setParticipantsState(TransactionState.COMMIT.getState());
-            par.setParticipantsUpdateTime(updateTime);
-            par.setParticipantsInvokeState(res.getInvokeState().getState());
-            processedList.add(par);
         }
-        /*表明事务参与者记录创建成功，事务参与者逻辑失败，但是却返回给主事务成功的消息
-           需要回滚主事务和其他参与者事务
-        */
         if (invalidCommit) {
-            log.warn("some participant trx actually did fails, need to rollback all,trxId:{}", trx.getTrxId());
             trxRecordService.rollbackMainTrx(trx);
             return true;
         }
 
+        ConcurrentMap<Future<CallbackInvokeResVO>, TransactionParticipantsEntity> invokeMap = new ConcurrentHashMap<>(participantsList.size());
+        for (TransactionParticipantsEntity par : participantsList) {
+            if (TransactionState.COMMIT.getState() == par.getParticipantsState()) {
+                continue;
+            }
+            Future<CallbackInvokeResVO> future = pool.submitCommitOrRollbackTask(par.getParticipantsSubmitCallback(), par.getParticipantsId());
+            invokeMap.put(future, par);
+        }
+
+        for (ConcurrentMap.Entry<Future<CallbackInvokeResVO>, TransactionParticipantsEntity> entry : invokeMap.entrySet()) {
+            //所以处于可提交状态的回调都可以执行成功，本次不成功下次继续执行
+            if (entry.getKey().get().getInvokeState() == CallbackState.CallbackCommitSuccess) {
+                entry.getValue().setParticipantsState(TransactionState.COMMIT.getState());
+                entry.getValue().setParticipantsUpdateTime(updateTime);
+                entry.getValue().setParticipantsInvokeState(entry.getKey().get().getInvokeState().getState());
+                processedList.add(entry.getValue());
+            }
+        }
+
         if (!processedList.isEmpty()) {
             trxParticipantService.updateBatchById(processedList);
+        }
+        if (invokeMap.keySet().size() != processedList.size()) {
+            trx.setTrxProcessStatus(TrxMsgProcessState.Process_Allowed.getStatus());
+            trx.setTrxUpdateTime(LocalDateTime.now());
+            trxRecordService.updateMainTrxState(trx);
         }
         log.info("all participants commit done");
         return true;

@@ -93,4 +93,10 @@ public class TransactionRecordServiceImpl extends SuperServiceImpl<TransactionRe
         super.updateById(entity);
         return true;
     }
+
+    @Override
+    public boolean updateMainTrxState(TransactionRecordEntity entity) {
+        super.updateById(entity);
+        return true;
+    }
 }

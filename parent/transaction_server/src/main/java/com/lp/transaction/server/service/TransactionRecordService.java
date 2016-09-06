@@ -14,4 +14,6 @@ public interface TransactionRecordService extends ISuperService<TransactionRecor
     boolean commitMainTrx(TransactionRecordEntity entity);
 
     boolean rollbackMainTrx(TransactionRecordEntity entity);
+
+    boolean updateMainTrxState(TransactionRecordEntity entity);
 }

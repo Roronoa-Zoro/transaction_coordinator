@@ -9,7 +9,9 @@ public enum CallbackState {
     CallbackRollbackSuccess(3, "回调回滚成功"),
     CallbackRollbackFailure(4, "回调回滚失败"),
     CallbackFailure(5, "回调失败"),
-    CallbackIllegal(6, "回调非法"),;
+    CallbackIllegal(6, "回调非法"),
+    CallbackPreCommit(7, "处于预提交阶段"),
+    CallbackRollback(8, "本地事务已回滚");
 
     private int state;
     private String desc;
