@@ -16,8 +16,10 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class TransactionServer {
     private static final String signalPath = "E:/tmp/signal.txt";
+
     public static void main(String[] args) {
         ClassPathXmlApplicationContext ac = new ClassPathXmlApplicationContext("spring-jdbc.xml");
+
         Runtime.getRuntime().addShutdownHook(new Thread(){
             @Override
             public void run() {

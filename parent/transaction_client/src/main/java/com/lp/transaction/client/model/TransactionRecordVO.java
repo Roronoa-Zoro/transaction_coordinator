@@ -12,7 +12,8 @@ public class TransactionRecordVO implements Serializable{
     private Long trxId;
     //事务参与者的数量
     private int trxPartiNum;
-    private String trxCallback;
-    private String trxSubmitCallback;
-    private String trxRollbackCallback;
+    private String callbackMonitorUrl;
+    private String callbackSubmitUrl;
+    private String callbackRollbackUrl;
+    private Integer trxSource;
 }

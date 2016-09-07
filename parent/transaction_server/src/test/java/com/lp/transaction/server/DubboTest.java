@@ -19,7 +19,7 @@ public class DubboTest {
     public void jsonTest() {
         TransactionRecordEntity entity = new TransactionRecordEntity();
         entity.setTrxState(1);
-        entity.setTrxCreateTime(LocalDateTime.now());
+        entity.setCreateTime(LocalDateTime.now());
         String json = JSON.toJSONString(entity);
         System.err.println(json);
         JSONObject json1 = JSON.parseObject(json);

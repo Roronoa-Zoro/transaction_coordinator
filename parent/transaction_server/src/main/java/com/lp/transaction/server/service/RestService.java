@@ -1,6 +1,7 @@
 package com.lp.transaction.server.service;
 
 import com.lp.transaction.client.enums.CallbackState;
+import com.lp.transaction.client.enums.TransactionState;
 import com.lp.transaction.server.exceptions.RestException;
 import com.lp.transaction.server.vo.CallbackInvokeResVO;
 import lombok.extern.slf4j.Slf4j;
@@ -11,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
-import java.net.ConnectException;
 
 /**
  * Created by 123 on 2016/8/2.
@@ -35,8 +35,8 @@ public class RestService {
         return vo;
     }
 
-    public CallbackState monitorTrxStatus(String url, Object args) {
-        CallbackState res = template.postForObject(url, args, CallbackState.class);
+    public TransactionState monitorTrxStatus(String url, Object args) {
+        TransactionState res = template.postForObject(url, args, TransactionState.class);
         return res;
     }
 

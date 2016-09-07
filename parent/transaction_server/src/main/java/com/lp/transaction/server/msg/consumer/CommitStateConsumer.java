@@ -6,6 +6,8 @@ import com.lp.transaction.server.service.TransactionStateService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.util.concurrent.ExecutionException;
+
 /**
  * Created by 123 on 2016/8/2.
  */
@@ -22,6 +24,12 @@ public class CommitStateConsumer extends RocketMqConsumer {
 
     @Override
     public void processMessage(TransactionRecordEntity record) {
-        stateService.handleCommitState(record);
+        try {
+            stateService.handleCommitState(record);
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 }

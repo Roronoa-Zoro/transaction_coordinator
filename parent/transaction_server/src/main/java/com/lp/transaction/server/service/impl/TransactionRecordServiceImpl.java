@@ -34,7 +34,7 @@ public class TransactionRecordServiceImpl extends SuperServiceImpl<TransactionRe
     public TrxMsgSendResState sendTrxParticipantMsg() {
         Page<TransactionRecordEntity> page = new Page<>(0, 500);
         TransactionRecordEntity record = new TransactionRecordEntity();
-        record.setTrxProcessStatus(TrxMsgProcessState.Process_Allowed.getStatus());
+        record.setProcessStatus(TrxMsgProcessState.Process_Allowed.getStatus());
         Page<TransactionRecordEntity> recordPage = super.selectPage(page, record);
         if (recordPage.getRecords() == null || recordPage.getRecords().isEmpty()) {
             log.info("did not get message");
@@ -47,7 +47,7 @@ public class TransactionRecordServiceImpl extends SuperServiceImpl<TransactionRe
                     MessageWraper<TransactionRecordEntity> wraper = new MessageWraper<>();
                     wraper.setMsg(r);
                     wraper.setUuid(String.valueOf(r.getTrxId()));
-                    if (TransactionState.COMMIT.getState() == r.getTrxState()) {
+                    if (TransactionState.COMMIT_ALLOWED.getState() == r.getTrxState()) {
                         wraper.setType(TopicInfo.CommitTopic);
                     } else if (TransactionState.ROLLBACK.getState() == r.getTrxState()) {
                         wraper.setType(TopicInfo.RollbackTopic);
@@ -56,8 +56,8 @@ public class TransactionRecordServiceImpl extends SuperServiceImpl<TransactionRe
                     }
                     boolean res = producer.send(wraper);
                     if (res) {
-                        r.setTrxProcessStatus(TrxMsgProcessState.Process_Done.getStatus());
-                        r.setTrxUpdateTime(LocalDateTime.now());
+                        r.setProcessStatus(TrxMsgProcessState.Process_Done.getStatus());
+                        r.setUpdateTime(LocalDateTime.now());
                         super.updateById(r);
                         log.debug("trx msg:{} sent out success", r.getTrxId());
                         counter.incrementAndGet();
@@ -78,9 +78,9 @@ public class TransactionRecordServiceImpl extends SuperServiceImpl<TransactionRe
 
     @Override
     public boolean commitMainTrx(TransactionRecordEntity entity) {
-        entity.setTrxState(TransactionState.COMMIT.getState());
-        entity.setTrxUpdateTime(LocalDateTime.now());
-        entity.setTrxProcessStatus(TrxMsgProcessState.Process_Allowed.getStatus());
+        entity.setTrxState(TransactionState.COMMIT_ALLOWED.getState());
+        entity.setUpdateTime(LocalDateTime.now());
+        entity.setProcessStatus(TrxMsgProcessState.Process_Allowed.getStatus());
         super.updateById(entity);
         return true;
     }
@@ -88,8 +88,8 @@ public class TransactionRecordServiceImpl extends SuperServiceImpl<TransactionRe
     @Override
     public boolean rollbackMainTrx(TransactionRecordEntity entity) {
         entity.setTrxState(TransactionState.ROLLBACK.getState());
-        entity.setTrxUpdateTime(LocalDateTime.now());
-        entity.setTrxProcessStatus(TrxMsgProcessState.Process_Allowed.getStatus());
+        entity.setUpdateTime(LocalDateTime.now());
+        entity.setProcessStatus(TrxMsgProcessState.Process_Allowed.getStatus());
         super.updateById(entity);
         return true;
     }

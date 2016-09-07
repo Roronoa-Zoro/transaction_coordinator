@@ -13,10 +13,8 @@ import java.time.LocalDateTime;
 public class TransactionParticipantsVO implements Serializable {
     private Long participantsId;
     private Long trxId;
-    private String participantsCallback;
-    private String participantsSubmitCallback;
-    private String participantsRollbackCallback;
-    private String participantsArgs;
-    private int participantsVersion;
-    private int participantsInvokeState;
+    private String callbackMonitorUrl;
+    private String callbackSubmitUrl;
+    private String callbackRollbackUrl;
+    private Integer trxSource;
 }

@@ -5,8 +5,9 @@ package com.lp.transaction.client.enums;
  */
 public enum TransactionState {
     UNKNOWN(1),
-    COMMIT(2),
-    ROLLBACK(3);
+    COMMIT_ALLOWED(2),
+    ROLLBACK(3),
+    COMMITTED(4);
     private int state;
 
     TransactionState(int state) {

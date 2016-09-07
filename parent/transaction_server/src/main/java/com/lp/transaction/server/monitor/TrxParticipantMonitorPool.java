@@ -1,6 +1,6 @@
 package com.lp.transaction.server.monitor;
 
-import com.lp.transaction.client.enums.CallbackState;
+import com.lp.transaction.client.enums.TransactionState;
 import com.lp.transaction.server.service.RestService;
 import com.lp.transaction.server.vo.CallbackInvokeResVO;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,9 +28,9 @@ public class TrxParticipantMonitorPool {
     @Autowired
     private RestService restService;
 
-    public Future<CallbackState> submitMonitorTask(String url, long arg) {
-        Future<CallbackState> future = executor.submit(() -> {
-            CallbackState res = restService.monitorTrxStatus(url, arg);
+    public Future<TransactionState> submitMonitorTask(String url, long arg) {
+        Future<TransactionState> future = executor.submit(() -> {
+            TransactionState res = restService.monitorTrxStatus(url, arg);
             return res;
         });
         return future;

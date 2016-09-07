@@ -3,10 +3,9 @@ package com.lp.transaction.server.converter;
 import com.lp.transaction.client.enums.TransactionState;
 import com.lp.transaction.client.model.TransactionParticipantsVO;
 import com.lp.transaction.client.model.TransactionRecordVO;
-import com.lp.transaction.server.entity.TransactionParticipantsEntity;
 import com.lp.transaction.server.entity.TransactionRecordEntity;
-import com.lp.transaction.server.enums.TrxBusinessState;
 import com.lp.transaction.server.enums.TrxMsgProcessState;
+import com.lp.transaction.server.enums.TrxParticipantType;
 
 import java.time.LocalDateTime;
 
@@ -16,29 +15,31 @@ import java.time.LocalDateTime;
 public class VOToEntity {
     public TransactionRecordEntity toTransactionRecordEntity(TransactionRecordVO vo) {
         TransactionRecordEntity entity = new TransactionRecordEntity();
-        entity.setTrxCallback(vo.getTrxCallback());
+        entity.setCallbackMonitorUrl(vo.getCallbackMonitorUrl());
         entity.setTrxPartiNum(vo.getTrxPartiNum());
-        entity.setTrxRollbackCallback(vo.getTrxRollbackCallback());
-        entity.setTrxSubmitCallback(vo.getTrxSubmitCallback());
-        entity.setTrxCreateTime(LocalDateTime.now());
-        entity.setTrxUpdateTime(LocalDateTime.now());
-        entity.setTrxVersion(0);
+        entity.setCallbackRollbackUrl(vo.getCallbackRollbackUrl());
+        entity.setCallbackCommitUrl(vo.getCallbackSubmitUrl());
+        entity.setCreateTime(LocalDateTime.now());
+        entity.setUpdateTime(LocalDateTime.now());
+        entity.setVersion(0);
         entity.setTrxState(TransactionState.UNKNOWN.getState());
-        entity.setTrxProcessStatus(TrxMsgProcessState.Process_Not_Allowed.getStatus());
+        entity.setProcessStatus(TrxMsgProcessState.Process_Not_Allowed.getStatus());
+        entity.setTrxType(TrxParticipantType.TrxInitiator.getType());
         return entity;
     }
 
-    public TransactionParticipantsEntity toTransactionParticipantsEntity(TransactionParticipantsVO vo) {
-        TransactionParticipantsEntity entity = new TransactionParticipantsEntity();
-        entity.setParticipantsState(TransactionState.UNKNOWN.getState());
-        entity.setParticipantsArgs(vo.getParticipantsArgs());
-        entity.setParticipantsCallback(vo.getParticipantsCallback());
-        entity.setParticipantsCreateTime(LocalDateTime.now());
-        entity.setParticipantsRollbackCallback(vo.getParticipantsRollbackCallback());
-        entity.setParticipantsSubmitCallback(vo.getParticipantsSubmitCallback());
-        entity.setParticipantsUpdateTime(LocalDateTime.now());
-        entity.setParticipantsVersion(0);
-        entity.setTrxId(vo.getTrxId());
+    public TransactionRecordEntity toTransactionParticipantsEntity(TransactionParticipantsVO vo) {
+        TransactionRecordEntity entity = new TransactionRecordEntity();
+        entity.setTrxState(TransactionState.UNKNOWN.getState());
+        entity.setCallbackMonitorUrl(vo.getCallbackMonitorUrl());
+        entity.setCallbackRollbackUrl(vo.getCallbackRollbackUrl());
+        entity.setCallbackCommitUrl(vo.getCallbackSubmitUrl());
+        entity.setCreateTime(LocalDateTime.now());
+        entity.setUpdateTime(LocalDateTime.now());
+        entity.setVersion(0);
+        entity.setTrxId(vo.getParticipantsId());
+        entity.setTrxInitiatorId(vo.getTrxId());
+        entity.setTrxType(TrxParticipantType.TrxParticipant.getType());
         return entity;
     }
 }

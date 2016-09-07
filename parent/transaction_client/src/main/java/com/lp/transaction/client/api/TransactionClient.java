@@ -5,11 +5,15 @@ import com.lp.transaction.client.model.TransactionRecordVO;
 
 public interface TransactionClient {
 
-    TransactionRecordVO addMainTrx(TransactionRecordVO trx);
+    TransactionRecordVO addTrxInitiator(TransactionRecordVO trx);
 
-    TransactionParticipantsVO addParticipantsTrx(TransactionParticipantsVO participant);
+    boolean commitTrxInitiator(TransactionRecordVO trx);
 
-    boolean commitMainTrx(TransactionRecordVO trx);
+    boolean rollbackTrxInitiator(TransactionRecordVO trx);
 
-    boolean rollbackMainTrx(TransactionRecordVO trx);
+    TransactionParticipantsVO addTrxParticipant(TransactionParticipantsVO participant);
+
+    boolean commitTrxParticipant(TransactionParticipantsVO trx);
+
+    boolean rollbackTrxParticipant(TransactionParticipantsVO trx);
 }

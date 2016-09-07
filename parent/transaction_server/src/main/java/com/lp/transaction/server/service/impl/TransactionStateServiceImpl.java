@@ -2,12 +2,10 @@ package com.lp.transaction.server.service.impl;
 
 import com.lp.transaction.client.enums.CallbackState;
 import com.lp.transaction.client.enums.TransactionState;
-import com.lp.transaction.server.entity.TransactionParticipantsEntity;
 import com.lp.transaction.server.entity.TransactionRecordEntity;
 import com.lp.transaction.server.enums.TrxMsgProcessState;
 import com.lp.transaction.server.monitor.TrxParticipantMonitorPool;
 import com.lp.transaction.server.service.RestService;
-import com.lp.transaction.server.service.TransactionParticipantsService;
 import com.lp.transaction.server.service.TransactionRecordService;
 import com.lp.transaction.server.service.TransactionStateService;
 import com.lp.transaction.server.vo.CallbackInvokeResVO;
@@ -37,24 +35,22 @@ public class TransactionStateServiceImpl implements TransactionStateService {
     @Autowired
     private TransactionRecordService trxRecordService;
     @Autowired
-    private TransactionParticipantsService trxParticipantService;
-    @Autowired
     private TrxParticipantMonitorPool pool;
 
 
     @Override
-    public boolean handleUnknownState(TransactionRecordEntity trx) {
-        CallbackState res = restService.monitorTrxStatus(trx.getTrxCallback(), trx.getTrxId());
-        if (CallbackState.CallbackCommitFailure == res) {
+    public boolean handleUnknownState(TransactionRecordEntity trx) throws ExecutionException, InterruptedException {
+        TransactionState res = restService.monitorTrxStatus(trx.getCallbackMonitorUrl(), trx.getTrxId());
+        if (TransactionState.UNKNOWN == res) {
             log.info("main trx:{} commit fails, will rollback", trx.getTrxId());
             trxRecordService.rollbackMainTrx(trx);
             return true;
         }
 
         TransactionRecordEntity dbTrx = trxRecordService.selectById(trx.getTrxId());
-        TransactionParticipantsEntity participants = new TransactionParticipantsEntity();
-        participants.setTrxId(trx.getTrxId());
-        List<TransactionParticipantsEntity> participantsList = trxParticipantService.selectList(participants);
+        TransactionRecordEntity participants = new TransactionRecordEntity();
+        participants.setTrxInitiatorId(trx.getTrxId());
+        List<TransactionRecordEntity> participantsList = trxRecordService.selectList(participants);
         if (dbTrx.getTrxPartiNum() != participantsList.size()) {
             trxRecordService.rollbackMainTrx(trx);
             log.info("check unknown record:{}, result is rollback due to actual participants num:{} is not equals to expected num:{}",
@@ -64,10 +60,20 @@ public class TransactionStateServiceImpl implements TransactionStateService {
 
         Set<Integer> stateSet = new HashSet<>();
         stateSet.add(res.getState());
-        participantsList.forEach(par -> {
-            CallbackState parRes = restService.monitorTrxStatus(par.getParticipantsCallback(), par.getParticipantsId());
-            stateSet.add(parRes.getState());
+        List<Future<TransactionState>> futures = new ArrayList<>(participantsList.size());
+        participantsList.forEach(participant -> {
+            futures.add(pool.submitMonitorTask(participant.getCallbackMonitorUrl(), participant.getTrxId()));
         });
+        futures.forEach(future -> {
+            try {
+                stateSet.add(future.get().getState());
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            } catch (ExecutionException e) {
+                e.printStackTrace();
+            }
+        });
+
         if (stateSet.size() > 1) {
             //有事务参与者的提交状态和其他参与者不一致，回滚
             trxRecordService.rollbackMainTrx(trx);
@@ -82,9 +88,9 @@ public class TransactionStateServiceImpl implements TransactionStateService {
 
     @Override
     public boolean handleCommitState(TransactionRecordEntity trx) throws ExecutionException, InterruptedException {
-        TransactionParticipantsEntity participants = new TransactionParticipantsEntity();
-        participants.setTrxId(trx.getTrxId());
-        List<TransactionParticipantsEntity> participantsList = trxParticipantService.selectList(participants);
+        TransactionRecordEntity participants = new TransactionRecordEntity();
+        participants.setTrxInitiatorId(trx.getTrxId());
+        List<TransactionRecordEntity> participantsList = trxRecordService.selectList(participants);
 
         if (trx.getTrxPartiNum() != participantsList.size()) {
             log.info("some transaction participants are not in this transaction activity, rollback, trxId:{}", trx.getTrxId());
@@ -93,19 +99,22 @@ public class TransactionStateServiceImpl implements TransactionStateService {
         }
 
         //事务参与者的数量和预期的一样,表示没有参与者实际执行失败,但由于网络原因造成主事务接收到成功
-        List<TransactionParticipantsEntity> processedList = new ArrayList<>();
+        List<TransactionRecordEntity> processedList = new ArrayList<>();
         LocalDateTime updateTime = LocalDateTime.now();
 
         /**
          * 应该先检查所有参与者是否都处于可提交状态
          */
-        List<Future<CallbackState>> futures = new ArrayList<>(participantsList.size());
+        List<Future<TransactionState>> futures = new ArrayList<>(participantsList.size());
         participantsList.forEach(participant -> {
-                futures.add(pool.submitMonitorTask(participant.getParticipantsCallback(), participant.getParticipantsId()));
+            if (CallbackState.CallbackCommitSuccess.getState() == participant.getCallbackInvokeStatus()) {
+                return;
+            }
+            futures.add(pool.submitMonitorTask(participant.getCallbackMonitorUrl(), participant.getTrxId()));
         });
         boolean invalidCommit = false;
-        for (Future<CallbackState> future : futures) {
-            if (CallbackState.CallbackPreCommit != future.get()) {
+        for (Future<TransactionState> future : futures) {
+            if (TransactionState.UNKNOWN == future.get()) {
                 //有参与者事务未处于可提交状态
                 invalidCommit = true;
                 break;
@@ -116,31 +125,36 @@ public class TransactionStateServiceImpl implements TransactionStateService {
             return true;
         }
 
-        ConcurrentMap<Future<CallbackInvokeResVO>, TransactionParticipantsEntity> invokeMap = new ConcurrentHashMap<>(participantsList.size());
-        for (TransactionParticipantsEntity par : participantsList) {
-            if (TransactionState.COMMIT.getState() == par.getParticipantsState()) {
+        ConcurrentMap<Future<CallbackInvokeResVO>, TransactionRecordEntity> invokeMap = new ConcurrentHashMap<>(participantsList.size());
+        if (CallbackState.CallbackCommitSuccess.getState() != trx.getCallbackInvokeStatus()) {
+            Future<CallbackInvokeResVO> future = pool.submitCommitOrRollbackTask(trx.getCallbackCommitUrl(), trx.getTrxId());
+            invokeMap.put(future, trx);
+        }
+
+        for (TransactionRecordEntity par : participantsList) {
+            if (CallbackState.CallbackCommitSuccess.getState() == par.getCallbackInvokeStatus()) {
                 continue;
             }
-            Future<CallbackInvokeResVO> future = pool.submitCommitOrRollbackTask(par.getParticipantsSubmitCallback(), par.getParticipantsId());
+            Future<CallbackInvokeResVO> future = pool.submitCommitOrRollbackTask(par.getCallbackCommitUrl(), par.getTrxId());
             invokeMap.put(future, par);
         }
 
-        for (ConcurrentMap.Entry<Future<CallbackInvokeResVO>, TransactionParticipantsEntity> entry : invokeMap.entrySet()) {
-            //所以处于可提交状态的回调都可以执行成功，本次不成功下次继续执行
+        for (ConcurrentMap.Entry<Future<CallbackInvokeResVO>, TransactionRecordEntity> entry : invokeMap.entrySet()) {
+            //所有处于可提交状态的回调都可以执行成功，本次不成功下次继续执行
             if (entry.getKey().get().getInvokeState() == CallbackState.CallbackCommitSuccess) {
-                entry.getValue().setParticipantsState(TransactionState.COMMIT.getState());
-                entry.getValue().setParticipantsUpdateTime(updateTime);
-                entry.getValue().setParticipantsInvokeState(entry.getKey().get().getInvokeState().getState());
+                entry.getValue().setTrxState(TransactionState.COMMITTED.getState());
+                entry.getValue().setUpdateTime(updateTime);
+                entry.getValue().setCallbackInvokeStatus(entry.getKey().get().getInvokeState().getState());
                 processedList.add(entry.getValue());
             }
         }
 
         if (!processedList.isEmpty()) {
-            trxParticipantService.updateBatchById(processedList);
+            trxRecordService.updateBatchById(processedList);
         }
         if (invokeMap.keySet().size() != processedList.size()) {
-            trx.setTrxProcessStatus(TrxMsgProcessState.Process_Allowed.getStatus());
-            trx.setTrxUpdateTime(LocalDateTime.now());
+            trx.setProcessStatus(TrxMsgProcessState.Process_Allowed.getStatus());
+            trx.setUpdateTime(LocalDateTime.now());
             trxRecordService.updateMainTrxState(trx);
         }
         log.info("all participants commit done");
@@ -150,60 +164,62 @@ public class TransactionStateServiceImpl implements TransactionStateService {
 
     @Override
     public boolean handleRollbackState(TransactionRecordEntity trx) {
-        TransactionParticipantsEntity participants = new TransactionParticipantsEntity();
-        participants.setTrxId(trx.getTrxId());
-        List<TransactionParticipantsEntity> participantsList = trxParticipantService.selectList(participants);
+        TransactionRecordEntity participants = new TransactionRecordEntity();
+        participants.setTrxInitiatorId(trx.getTrxId());
+        List<TransactionRecordEntity> participantsList = trxRecordService.selectList(participants);
         if (participantsList == null || participantsList.isEmpty()) {
             log.info("there's no trx participants,trxId:{}", trx.getTrxId());
             return true;
         }
         LocalDateTime updateTime = LocalDateTime.now();
+        boolean mainTrxRollback = true;
         //表示主事务还未回滚, 防止重复操作
-        if (trx.getTrxCallbackInvokeStatus() != CallbackState.CallbackRollbackFailure.getState() && trx.getTrxCallbackInvokeStatus() != CallbackState.CallbackFailure.getState()) {
+        if (trx.getCallbackInvokeStatus() != CallbackState.CallbackRollbackSuccess.getState()) {
             //回滚主事务
-            CallbackInvokeResVO mainRes = restService.invoke(trx.getTrxRollbackCallback(), trx.getTrxId());
+            CallbackInvokeResVO mainRes = restService.invoke(trx.getCallbackRollbackUrl(), trx.getTrxId());
+            trx.setCallbackInvokeStatus(mainRes.getInvokeState().getState());
             if (mainRes.getInvokeState() == CallbackState.CallbackRollbackFailure || mainRes.getInvokeState() == CallbackState.CallbackFailure) {
-                trx.setTrxProcessStatus(TrxMsgProcessState.Process_Allowed.getStatus());
-                trx.setTrxUpdateTime(updateTime);
                 log.info("rollback main trx:{} fails, reset it and process it later", trx.getTrxId());
-                trxRecordService.updateById(trx);
-                return true;
+                mainTrxRollback = false;
             }
-            trx.setTrxCallbackInvokeStatus(mainRes.getInvokeState().getState());
-            trx.setTrxUpdateTime(updateTime);
         }
 
         boolean allParticipantRollback = true;
-        List<TransactionParticipantsEntity> processedList = new ArrayList<>();
-        for (TransactionParticipantsEntity par : participantsList) {
-            if (TransactionState.ROLLBACK.getState() == par.getParticipantsState()) {
+        List<TransactionRecordEntity> processedList = new ArrayList<>();
+        for (TransactionRecordEntity par : participantsList) {
+            if (TransactionState.ROLLBACK.getState() == par.getTrxState()) {
                 continue;
             }
-            CallbackInvokeResVO res = restService.invoke(par.getParticipantsCallback(), par.getParticipantsId());
+            CallbackInvokeResVO res = restService.invoke(par.getCallbackRollbackUrl(), par.getTrxId());
             if (res.getInvokeState() == CallbackState.CallbackRollbackFailure || res.getInvokeState() == CallbackState.CallbackFailure) {
                 //此处回滚回掉失败
-                log.warn("rollback callback:{}, arg:{} fails", par.getParticipantsCallback(), par.getParticipantsId());
+                log.warn("rollback callback:{}, arg:{} fails", par.getCallbackRollbackUrl(), par.getTrxId());
                 allParticipantRollback = false;
                 continue;
             }
-            par.setParticipantsState(TransactionState.ROLLBACK.getState());
-            par.setParticipantsUpdateTime(updateTime);
-            par.setParticipantsInvokeState(res.getInvokeState().getState());
+            par.setTrxState(TransactionState.ROLLBACK.getState());
+            par.setUpdateTime(updateTime);
+            par.setCallbackInvokeStatus(res.getInvokeState().getState());
             processedList.add(par);
         }
         //把已经回滚完成的进行更新
         if (!processedList.isEmpty()) {
-            trxParticipantService.updateBatchById(processedList);
+            trxRecordService.updateBatchById(processedList);
         }
-        if (!allParticipantRollback) {
-            trx.setTrxUpdateTime(updateTime);
-            trx.setTrxProcessStatus(TrxMsgProcessState.Process_Allowed.getStatus());
-            log.info("some trx participants rollback fails, will reset and handle it later,trxId:{}", trx.getTrxId());
+
+        if (mainTrxRollback && allParticipantRollback) {
+            trx.setUpdateTime(updateTime);
+            log.info("main trx and all trx participants are rollback,trxId:{}", trx.getTrxId());
             trxRecordService.updateById(trx);
             return true;
         }
 
-        log.info("all trx participants are rollback,trxId:{}", trx.getTrxId());
+        //主事务或参与者事务 回滚失败，后续继续处理
+        trx.setUpdateTime(updateTime);
+        trx.setProcessStatus(TrxMsgProcessState.Process_Allowed.getStatus());
+        log.info("some trx participants rollback fails, will reset and handle it later,trxId:{}", trx.getTrxId());
+        trxRecordService.updateById(trx);
         return true;
+
     }
 }

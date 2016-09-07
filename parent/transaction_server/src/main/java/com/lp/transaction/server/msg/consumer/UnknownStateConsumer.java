@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
 
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.concurrent.ExecutionException;
+
 @Slf4j
 @Component("unknownStateConsumer")
 public class UnknownStateConsumer extends RocketMqConsumer {
@@ -22,6 +24,12 @@ public class UnknownStateConsumer extends RocketMqConsumer {
 
 	@Override
 	public void processMessage(TransactionRecordEntity record) {
-		stateService.handleUnknownState(record);
+		try {
+			stateService.handleUnknownState(record);
+		} catch (ExecutionException e) {
+			e.printStackTrace();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
 	}
 }

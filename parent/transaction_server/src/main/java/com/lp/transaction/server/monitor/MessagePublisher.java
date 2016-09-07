@@ -77,7 +77,7 @@ class MessagePublisher {
                     throw new RuntimeException("");
                 }
                 try {
-                    Thread.sleep(1000l);
+                    TimeUnit.SECONDS.sleep(2L);
                 } catch (InterruptedException e) {
                     log.warn("轮询发送[事务消息发放] 等待原线程任务终止出错", e);
                 }
