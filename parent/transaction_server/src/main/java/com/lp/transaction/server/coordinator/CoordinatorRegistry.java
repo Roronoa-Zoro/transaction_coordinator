@@ -18,6 +18,11 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Created by Administrator on 2016/9/14.
+ * 任务执行注册中心
+ * 流程
+ * 1.TaskLifecycle的start方法把自己注册到这里
+ * 2.本注册中心去,获取任务执行的权利和注册 任务协调监听接口
+ * 3.协调监听接口, 监听事件变化, 调用 TaskLifecycle的start/stop(生命周期接口方法)
  */
 @Component
 @Slf4j

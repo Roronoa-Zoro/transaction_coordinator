@@ -1,4 +1,4 @@
-package com.lp.transaction.server.monitor;
+package com.lp.transaction.server.util;
 
 import com.lp.transaction.client.enums.TransactionState;
 import com.lp.transaction.server.service.RestService;

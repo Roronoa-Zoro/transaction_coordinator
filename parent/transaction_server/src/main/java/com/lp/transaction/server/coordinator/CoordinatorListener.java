@@ -6,6 +6,7 @@ import org.apache.curator.framework.recipes.cache.*;
 
 /**
  * Created by Administrator on 2016/9/13.
+ * zk监听器
  */
 public class CoordinatorListener implements TreeCacheListener {
 

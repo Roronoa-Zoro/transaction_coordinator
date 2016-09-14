@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Created by Administrator on 2016/9/14.
+ * 查询事务协调记录，发送到mq，然后处理
  */
 @Slf4j
 @Component
