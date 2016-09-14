@@ -1,4 +1,4 @@
-package com.lp.transaction.server.zkClient;
+package com.lp.transaction.server.util;
 
 import java.net.Inet4Address;
 import java.net.InetAddress;
